@@ -1,0 +1,218 @@
+heat_template_version: 2013-05-23
+
+description: >
+  Heat WordPress template to support F20, using only Heat OpenStack-native
+  resource types, and without the requirement for heat-cfntools in the image.
+  WordPress is web software you can use to create a beautiful website or blog.
+  This template installs a single-instance WordPress deployment using a local
+  MySQL database to store the data.
+
+parameters:
+  inst_number:
+    type: string
+  key_name:
+    type: string
+    description : Name of a KeyPair to enable SSH access to the instance
+  instance_type:
+    type: string
+    description: Instance type for WordPress server
+    default: m2.tiny
+    constraints:
+      - allowed_values: [m1.small, m2.small, m2.tiny]
+        description: instance_type must be one of m1.small, m2.small or m2.tiny
+  image_id:
+    type: string
+    description: ID of the image to use for the WordPress server
+    default: centos-7.1
+    constraints:
+      - allowed_values: [ centos-7.1, centos-7 ]
+        description: >
+          Image ID must be either centos-7.1 or centos-7
+  db_name:
+    type: string
+    description: WordPress database name
+    default: wordpress
+    constraints:
+      - length: { min: 1, max: 64 }
+        description: db_name must be between 1 and 64 characters
+      - allowed_pattern: '[a-zA-Z][a-zA-Z0-9]*'
+        description: >
+          db_name must begin with a letter and contain only alphanumeric
+          characters
+  db_user:
+    type: string
+    description: The WordPress database admin account username
+    default: admin
+    hidden: true
+    constraints:
+      - length: { min: 1, max: 16 }
+        description: db_user must be between 1 and 64 characters
+      - allowed_pattern: '[a-zA-Z][a-zA-Z0-9]*'
+        description: >
+          db_user must begin with a letter and contain only alphanumeric
+          characters
+  db_password:
+    type: string
+    description: The WordPress database admin account password
+    default: admin
+    hidden: true
+    constraints:
+      - length: { min: 1, max: 41 }
+        description: db_user must be between 1 and 64 characters
+      - allowed_pattern: '[a-zA-Z0-9]*'
+        description: db_password must contain only alphanumeric characters
+  db_root_password:
+    type: string
+    description: Root password for MySQL
+    default: admin
+    hidden: true
+    constraints:
+      - length: { min: 1, max: 41 }
+        description: db_user must be between 1 and 64 characters
+      - allowed_pattern: '[a-zA-Z0-9]*'
+        description: db_password must contain only alphanumeric characters
+
+resources:
+  webapp1:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxWPR1", {get_param: inst_number} ] ] }
+      image: { get_param: image_id }
+      flavor: { get_param: instance_type }
+      key_name: { get_param: key_name }
+      networks:
+        - network: production
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+
+            rpm -ivh http://10.134.57.186/yum/x86_64/7Server/epel-release/epel-release-7-6.noarch.rpm
+            yum install -y httpd wordpress
+            echo "Health Web Page" > /var/www/html/health.html
+            sed -i "/Deny from All/d" /etc/httpd/conf.d/wordpress.conf
+            sed -i "s/Require local/Require all granted/" /etc/httpd/conf.d/wordpress.conf
+            sed -i s/database_name_here/db_name/ /etc/wordpress/wp-config.php
+            sed -i s/localhost/$db_host/ /etc/wordpress/wp-config.php
+            sed -i s/username_here/db_user/ /etc/wordpress/wp-config.php
+            sed -i s/password_here/db_password/ /etc/wordpress/wp-config.php
+            systemctl enable httpd.service
+            systemctl start httpd.service
+          params:
+            $db_host: {get_attr: [db1, first_address]}
+            db_rootpassword: { get_param: db_root_password }
+            db_name: { get_param: db_name }
+            db_user: { get_param: db_user }
+            db_password: { get_param: db_password }
+  webapp2:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxWPR2", {get_param: inst_number} ] ] }
+      image: { get_param: image_id }
+      flavor: { get_param: instance_type }
+      key_name: { get_param: key_name }
+      networks:
+        - network: production
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+
+            rpm -ivh http://10.134.57.186/yum/x86_64/7Server/epel-release/epel-release-7-6.noarch.rpm
+            yum install -y httpd wordpress
+            echo "Health Web Page" > /var/www/html/health.html
+            sed -i "/Deny from All/d" /etc/httpd/conf.d/wordpress.conf
+            sed -i "s/Require local/Require all granted/" /etc/httpd/conf.d/wordpress.conf
+            sed -i s/database_name_here/db_name/ /etc/wordpress/wp-config.php
+            sed -i s/localhost/$db_host/ /etc/wordpress/wp-config.php
+            sed -i s/username_here/db_user/ /etc/wordpress/wp-config.php
+            sed -i s/password_here/db_password/ /etc/wordpress/wp-config.php
+            systemctl enable httpd.service
+            systemctl start httpd.service
+          params:
+            $db_host: {get_attr: [db1, first_address]}
+            db_rootpassword: { get_param: db_root_password }
+            db_name: { get_param: db_name }
+            db_user: { get_param: db_user }
+            db_password: { get_param: db_password }
+  db1:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxWDBp", {get_param: inst_number} ] ] }
+      image: { get_param: image_id }
+      flavor: { get_param: instance_type }
+      key_name: { get_param: key_name }
+      networks:
+        - network: production
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+
+            yum -y install mariadb mariadb-server
+            touch /var/log/mariadb/mariadb.log
+            chown mysql.mysql /var/log/mariadb/mariadb.log
+            systemctl start mariadb.service
+
+            # Setup MySQL root password and create a user
+            mysqladmin -u root password db_rootpassword
+            cat << EOF | mysql -u root --password=db_rootpassword
+            CREATE USER 'mrugesh'@'%' IDENTIFIED BY 'db_password';
+            CREATE USER 'mrugesh'@'localhost' IDENTIFIED BY 'db_password';
+            CREATE USER 'mrugesh'@'{get_attr: [db1, first_address]}' IDENTIFIED BY 'db_password';
+            CREATE DATABASE db_name;
+            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'%' IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON wordpress.* TO "mrugesh"@"%" IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'localhost' IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'192.168.10.86' IDENTIFIED BY 'db_password';
+            FLUSH PRIVILEGES;
+            EXIT
+            EOF
+          params:
+            db_rootpassword: { get_param: db_root_password }
+            db_name: { get_param: db_name }
+            db_user: { get_param: db_user }
+            db_password: { get_param: db_password }
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors:
+        - {get_resource: monitor}
+      subnet: internal
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      members: [ { get_resource: webapp1 }, { get_resource: webapp2 } ]
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: HTTP
+      delay: 5
+      max_retries: 2
+      timeout: 5
+      url_path: "/health.html"
+
+  # assign a floating ip address to the load balancer
+  # pool.
+  lb_floating:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: public
+      port_id: {get_attr: [pool, vip, port_id]}
+
+outputs:
+  WebsiteURL:
+    description: URL for the Application
+    value: {"Fn::Join" : ["", [ "http://", { get_attr: [ lb_floating, floating_ip_address ] }, "/wordpress" ] ] }
+
+    
