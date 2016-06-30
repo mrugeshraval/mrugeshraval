@@ -1,0 +1,209 @@
+heat_template_version: 2013-05-23
+
+description: >
+  HOT template to deploy a 2/3 Tier web application with loadbalancer
+  two web servers and a database server
+parameters:
+  inst_number:
+    type: string
+  db_user:
+    type: string
+    description: Name of the database user
+  db_pass:
+    type: string
+    description: Password for the database user
+    hidden: true
+
+resources:
+  webapp1:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxapp1", {get_param: inst_number} ] ] }
+      image: ubuntu-1404
+      flavor: m2.small
+      key_name: t3access
+      networks:
+        - network: production
+      security_groups:
+        - {get_resource: T3-App}
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+            cd /tmp/
+            sudo wget http://10.134.57.186/yum/x86_64/7Server/puppet-agent/puppetlabs-release-pc1-trusty.deb
+            sudo dpkg -i /tmp/puppetlabs-release-pc1-trusty.deb
+            sudo apt-get update -y
+            sudo apt-get install -y wget apache2 mysql-client php5 php5-mysql subversion-tools
+            sudo service apache2 restart
+            sudo mkdir -m 777 /var/tmp-install
+            cd /var/tmp-install
+            sudo svn checkout http://10.134.57.182/svn/repo/development/environments/production/infra_modules/contact_app_v1.0 . --username mraval --password redhat --no-auth-cache
+            sudo sed -i -e "s/mydbpass/$db_pass/g" -e "s/user1/$db_user/g" -e "s/web server 1/$web_host1/g" *.php
+            sudo cp *.php /var/www/html/
+            sudo echo "Health web page" > /var/www/html/health.html
+            sudo echo "$db_host dbsrv" >> /etc/hosts
+            sudo apt-get install puppet-agent -y
+            sudo mkdir -m 777 /var/tmp-puppet
+            cd /var/tmp-puppet
+            sudo svn checkout http://10.134.57.182/svn/repo/development/environments/production/infra_modules/puppet_agent_v1.5.2-1/ . --username mraval --password redhat --no-auth-cache
+            sudo cp -f /var/tmp-puppet/puppet.conf /etc/puppetlabs/puppet/puppet.conf
+            sudo cp -f /opt/puppetlabs/bin/* /usr/bin/
+            sudo puppet resource service puppet ensure=running enable=true
+            sudo service puppet status
+          params:
+            $db_host: {get_attr: [db1, first_address]}
+            $web_host1: {"Fn::Join" : ["", [ "nxapp1", {get_param: inst_number} ] ] }
+            $db_user: {get_param: db_user}
+            $db_pass: {get_param: db_pass}
+
+  webapp2:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxapp2", {get_param: inst_number} ] ] }
+      image: ubuntu-1404
+      flavor: m2.small
+      key_name: t3access
+      networks:
+        - network: production
+      security_groups:
+        - {get_resource: T3-App}
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+            cd /tmp/
+            sudo wget http://10.134.57.186/yum/x86_64/7Server/puppet-agent/puppetlabs-release-pc1-trusty.deb
+            sudo sudo dpkg -i /tmp/puppetlabs-release-pc1-trusty.deb
+            sudo apt-get update -y
+            sudo apt-get install -y wget apache2 mysql-client php5 php5-mysql subversion-tools
+            sudo service apache2 restart
+            sudo mkdir -m 777 /var/tmp-install
+            cd /var/tmp-install
+            sudo svn checkout http://10.134.57.182/svn/repo/development/environments/production/infra_modules/contact_app_v1.0 . --username mraval --password redhat --no-auth-cache
+            sudo sed -i -e "s/mydbpass/$db_pass/g" -e "s/user1/$db_user/g" -e "s/web server 1/$web_host2/g" *.php
+            sudo cp *.php /var/www/html/
+            sudo echo "Health web page" > /var/www/html/health.html
+            sudo echo "$db_host dbsrv" >> /etc/hosts
+            sudo apt-get install puppet-agent -y
+            sudo mkdir -m 777 /var/tmp-puppet
+            cd /var/tmp-puppet
+            sudo svn checkout http://10.134.57.182/svn/repo/development/environments/production/infra_modules/puppet_agent_v1.5.2-1/ . --username mraval --password redhat --no-auth-cache
+            sudo cp -f /var/tmp-puppet/puppet.conf /etc/puppetlabs/puppet/puppet.conf
+            sudo cp -f /opt/puppetlabs/bin/* /usr/bin/
+            sudo puppet resource service puppet ensure=running enable=true
+            sudo service puppet status
+          params:
+            $db_host: {get_attr: [db1, first_address]}
+            $web_host2: {"Fn::Join" : ["", [ "nxapp2", {get_param: inst_number} ] ] }
+            $db_user: {get_param: db_user}
+            $db_pass: {get_param: db_pass}
+
+
+  db1:
+    type: OS::Nova::Server
+    properties:
+      name: {"Fn::Join" : ["", [ "nxmdbp", {get_param: inst_number} ] ] } 
+      image: ubuntu-1404
+      flavor: m2.small
+      key_name: t3access
+      networks:
+        - network: production
+      security_groups:
+        - {get_resource: T3-App}
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+            cd /tmp/
+            sudo wget http://10.134.57.186/yum/x86_64/7Server/puppet-agent/puppetlabs-release-pc1-trusty.deb
+            sudo sudo dpkg -i /tmp/puppetlabs-release-pc1-trusty.deb
+            sudo debconf-set-selections <<< 'mysql-server mysql-server/root_password password $db_pass'
+            sudo debconf-set-selections <<< 'mysql-server mysql-server/root_password_again password $db_pass'
+            sudo apt-get update -y
+            sudo apt-get install -y mysql-server
+            sudo sed -i "s/bind-address.*$/bind-address = 0.0.0.0/g"  /etc/mysql/my.cnf
+            sudo service mysql restart
+            mysql -u root -p$db_pass << EOF
+            create user '$db_user'@'%' identified by '$db_pass';
+            create user '$db_user'@'localhost' identified by '$db_pass';
+            create database test2;
+            grant all privileges on test2.* to '$db_user'@'%';
+            grant all privileges on test2.* to '$db_user'@'localhost';
+            use test2;
+            create table Persons (ID INT NOT NULL AUTO_INCREMENT PRIMARY KEY, FirstName CHAR(40) NOT NULL, LastName CHAR(40) NOT NULL, ContactNo BIGINT NOT NULL, Comments TEXT);
+            EOF
+            sudo mkdir -m 777 /var/tmp-puppet
+            cd /var/tmp-puppet
+            sudo apt-get install -y puppet-agent
+            sudo svn checkout http://10.134.57.182/svn/repo/development/environments/production/infra_modules/puppet_agent_v1.5.2-1/ . --username mraval --password redhat --no-auth-cache
+            sudo cp -f /var/tmp-puppet/puppet.conf /etc/puppetlabs/puppet/puppet.conf
+            sudo cp -f /opt/puppetlabs/bin/* /usr/bin/
+            sudo puppet resource service puppet ensure=running enable=true
+            sudo service puppet status
+          params:
+            $db_user: {get_param: db_user}
+            $db_pass: {get_param: db_pass}
+
+  T3-App:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: {"Fn::Join" : ["", [ "APP", {get_param: inst_number}, "T3-App" ] ] }
+      description: Heat deployed security group for http access
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: icmp
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors:
+        - {get_resource: monitor}
+      subnet: internal
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      members: [ { get_resource: webapp1 }, { get_resource: webapp2 } ]
+      protocol_port: 80
+      pool_id: {get_resource: pool}
+
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: HTTP
+      delay: 5
+      max_retries: 2
+      timeout: 5
+      url_path: "/health.html"
+
+  # assign a floating ip address to the load balancer
+  # pool.
+  lb_floating:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: public
+      port_id: {get_attr: [pool, vip, port_id]}
+
+outputs:
+  WebsiteURL:
+    description: URL for the Application
+    value: {"Fn::Join" : ["", [ "http://", { get_attr: [ lb_floating, floating_ip_address ] }, "/contactsmenu.php" ] ] }
+
