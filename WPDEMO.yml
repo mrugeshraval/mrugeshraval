@@ -160,14 +160,14 @@ resources:
             # Setup MySQL root password and create a user
             mysqladmin -u root password db_rootpassword
             cat << EOF | mysql -u root --password=db_rootpassword
-            CREATE USER 'mrugesh'@'%' IDENTIFIED BY 'db_password';
-            CREATE USER 'mrugesh'@'localhost' IDENTIFIED BY 'db_password';
-            CREATE USER 'mrugesh'@'{get_attr: [db1, first_address]}' IDENTIFIED BY 'db_password';
+            CREATE USER 'db_user'@'%' IDENTIFIED BY 'db_password';
+            CREATE USER 'db_user'@'localhost' IDENTIFIED BY 'db_password';
+            CREATE USER 'db_user'@'{get_attr: [db1, first_address]}' IDENTIFIED BY 'db_password';
             CREATE DATABASE db_name;
-            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'%' IDENTIFIED BY 'db_password';
-            GRANT ALL PRIVILEGES ON wordpress.* TO "mrugesh"@"%" IDENTIFIED BY 'db_password';
-            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'localhost' IDENTIFIED BY 'db_password';
-            GRANT ALL PRIVILEGES ON *.* TO 'mrugesh'@'192.168.10.86' IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON *.* TO 'db_user'@'%' IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON wordpress.* TO "db_user"@"%" IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON *.* TO 'db_user'@'localhost' IDENTIFIED BY 'db_password';
+            GRANT ALL PRIVILEGES ON *.* TO 'db_user'@'{get_attr: [db1, first_address]}' IDENTIFIED BY 'db_password';
             FLUSH PRIVILEGES;
             EXIT
             EOF
